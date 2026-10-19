@@ -1,6 +1,6 @@
 # Sonic Game
 
-A fast-paced 2D platformer inspired by classic Sonic-style gameplay.
+A fast-paced 2D platformer inspired by classic Sonic-style gameplay. A simple fun game to play when you are bored
 
 ## 1. Overview
 This project is a simple browser or desktop game where the player controls a character that runs at high speed, jumps across platforms, and collects items while avoiding hazards.
