@@ -30,6 +30,54 @@ let renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0xd8e7ff, 0);
 document.body.appendChild(renderer.domElement);
+
+const hud = document.createElement("div");
+hud.id = "hud";
+hud.innerHTML = `
+    <div class="hud-row"><span>Score</span><strong id="score">0</strong></div>
+    <div class="hud-row"><span>Combo</span><strong id="combo">x1</strong></div>
+`;
+document.body.appendChild(hud);
+
+const scoreEl = document.getElementById("score");
+const comboEl = document.getElementById("combo");
+const gameState = { score: 0, combo: 1, boost: 0 };
+let doJump = null;
+
+function updateHud() {
+    scoreEl.textContent = String(gameState.score);
+    comboEl.textContent = "x" + String(gameState.combo);
+}
+
+function celebrate(message) {
+    info.style.color = "hsl(" + Math.floor(Math.random() * 290) + ",90%,65%)";
+    info.innerHTML = message;
+    TweenLite.to(info, 0.35, {
+        css: { fontSize: "42px", opacity: 1 },
+        ease: Power4.easeOut,
+        onComplete: function () {
+            TweenLite.to(info, 0.7, {
+                css: { fontSize: "14px", opacity: 0 },
+                ease: Power4.easeOut
+            });
+        }
+    });
+}
+
+function triggerBoost() {
+    gameState.boost = Math.min(gameState.boost + 1.4, 3.5);
+    celebrate("BOOST!");
+    if (typeof doJump === "function") {
+        doJump();
+    }
+}
+
+window.addEventListener("keydown", function (event) {
+    if (["Space", "ArrowUp", "KeyW"].includes(event.code)) {
+        event.preventDefault();
+        triggerBoost();
+    }
+});
 //===================================================== resize
 window.addEventListener("resize", function () {
     let width = window.innerWidth;
@@ -192,6 +240,78 @@ var clock = new THREE.Clock();
 var mixer = null;
 var firstObject;
 var loader = new THREE.GLTFLoader();
+
+function buildFallbackSonic() {
+    var sonic = new THREE.Group();
+
+    var bodyMat = new THREE.MeshStandardMaterial({ color: 0x1f7cff, emissive: 0x103f8a, metalness: 0.2, roughness: 0.5 });
+    var accentMat = new THREE.MeshStandardMaterial({ color: 0xf9d95b, emissive: 0x8a6a00, metalness: 0.15, roughness: 0.55 });
+    var shoeMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.2, roughness: 0.6 });
+    var skinMat = new THREE.MeshStandardMaterial({ color: 0xf5c49b, emissive: 0x2a180b, roughness: 0.8 });
+
+    var torso = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.2, 0.7), bodyMat);
+    torso.position.y = 0.9;
+    sonic.add(torso);
+
+    var head = new THREE.Mesh(new THREE.SphereGeometry(0.56, 24, 24), skinMat);
+    head.position.y = 2.0;
+    sonic.add(head);
+
+    var quill = new THREE.Mesh(new THREE.ConeGeometry(0.18, 1.2, 8), accentMat);
+    quill.position.set(0, 2.65, 0);
+    quill.rotation.z = Math.PI;
+    sonic.add(quill);
+
+    var nose = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 12), skinMat);
+    nose.position.set(0, 1.9, 0.54);
+    sonic.add(nose);
+
+    var tail = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.1, 10), accentMat);
+    tail.position.set(-0.8, 1.2, -0.45);
+    tail.rotation.z = -0.9;
+    sonic.add(tail);
+
+    var leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.85, 10), bodyMat);
+    leftArm.position.set(-0.9, 1.1, 0);
+    leftArm.rotation.z = 0.9;
+    sonic.add(leftArm);
+
+    var rightArm = leftArm.clone();
+    rightArm.position.x = 0.9;
+    rightArm.rotation.z = -0.9;
+    sonic.add(rightArm);
+
+    var leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.9, 12), bodyMat);
+    leftLeg.position.set(-0.38, -0.45, 0.1);
+    sonic.add(leftLeg);
+
+    var rightLeg = leftLeg.clone();
+    rightLeg.position.x = 0.38;
+    sonic.add(rightLeg);
+
+    var leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.24, 0.9), shoeMat);
+    leftShoe.position.set(-0.38, -1.1, 0.18);
+    sonic.add(leftShoe);
+
+    var rightShoe = leftShoe.clone();
+    rightShoe.position.x = 0.38;
+    sonic.add(rightShoe);
+
+    sonic.scale.set(0.65, 0.65, 0.65);
+    sonic.position.y = 0.4;
+    return sonic;
+}
+
+function setupFallbackJump() {
+    doJump = function () {
+        if (!firstObject) return;
+        firstObject.rotation.z = -0.6;
+        setTimeout(function () {
+            firstObject.rotation.z = 0;
+        }, 220);
+    };
+}
+
 loader.load(
     "https://raw.githubusercontent.com/baronwatts/models/master/sonic.glb",
     function (gltf) {
@@ -209,19 +329,40 @@ loader.load(
         console.log(gltf.animations); //shows all animations imported into the dopesheet in blender
 
         mixer = new THREE.AnimationMixer(firstObject);
-        mixer.clipAction(gltf.animations[0]).play();
+        if (gltf.animations && gltf.animations.length > 0) {
+            mixer.clipAction(gltf.animations[0]).play();
+        }
 
-        document.body.addEventListener("click", jump);
-        function jump() {
+        doJump = function () {
+            if (!mixer || !gltf || !gltf.animations || gltf.animations.length < 2) {
+                return;
+            }
             mixer.clipAction(gltf.animations[0]).stop();
             mixer.clipAction(gltf.animations[1]).play();
             setTimeout(function () {
                 mixer.clipAction(gltf.animations[1]).stop();
                 mixer.clipAction(gltf.animations[0]).play();
             }, 900);
-        }
+        };
+
+        document.body.addEventListener("click", doJump);
+    },
+    undefined,
+    function (error) {
+        console.warn("Sonic GLTF failed to load, using fallback character instead.", error);
+        firstObject = buildFallbackSonic();
+        group.add(firstObject);
+        setupFallbackJump();
+        document.body.addEventListener("click", doJump);
     }
 );
+
+if (!firstObject) {
+    firstObject = buildFallbackSonic();
+    group.add(firstObject);
+    setupFallbackJump();
+    document.body.addEventListener("click", doJump);
+}
 
 //===================================================== add model
 var size = 0.05;
@@ -266,22 +407,21 @@ function hit() {
 
         if (firstBB.isIntersectionBox(secondBB)) {
             PlaySound();
-            info.style.color = "hsl(" + Math.floor(Math.random() * 290) + ",50%,50%)";
-            info.innerHTML =
-                Math.random() > 0.25
-                    ? "Superb!"
-                    : Math.random() > 0.25 ? "Oustanding!" : "Awesome!";
+            gameState.score += 25 * gameState.combo;
+            gameState.combo = Math.min(gameState.combo + 1, 12);
+            gameState.boost = Math.min(gameState.boost + 0.35, 3.5);
+            updateHud();
 
-            TweenLite.to(info, 0.75, {
-                css: { fontSize: "50px", opacity: 1 },
-                ease: Power4.easeOut,
-                onComplete: function () {
-                    TweenLite.to(info, 0.75, {
-                        css: { fontSize: "14px", opacity: 0 },
-                        ease: Power4.easeOut
-                    }); //end tween
-                } //end onComplete
-            }); //end tween
+            const messages = ["SUPERB!", "OUTSTANDING!", "AWESOME!", "SONIC SPEED!", "RING BLAST!", "MAX BOOST!"];
+            celebrate(messages[Math.floor(Math.random() * messages.length)]);
+            meshList[i].scale.set(0.22, 0.22, 0.22);
+            setTimeout(function () {
+                meshList[i].scale.set(0.05, 0.05, 0.05);
+            }, 180);
+
+            if (gameState.combo > 1) {
+                gameState.boost = Math.min(gameState.boost + 0.25, 3.5);
+            }
         } //end if
     } //end for
 } //end hit
@@ -395,7 +535,8 @@ setupShaderBloom();
 var percentage = 0;
 var prevTime = Date.now();
 function POV() {
-    percentage += 0.00045;
+    gameState.boost *= 0.985;
+    percentage += 0.00045 * (1 + gameState.boost * 0.45);
     var p1 = carPath.getPointAt(percentage % 1);
     var p2 = carPath.getPointAt((percentage + 0.01) % 1);
     var p3 = carPath.getPointAt((percentage + 0.01 / 2) % 1);
@@ -403,12 +544,14 @@ function POV() {
 
     camera.lookAt(p2);
 
-
     group.position.set(p3.x, p3.y + 0.25, p3.z);
     group.lookAt(p2);
-    camera.position.x = p4.x + 2;
-    camera.position.y = p4.y + 1;
-    camera.position.z = p4.z + 2;
+    group.rotation.z = Math.sin(performance.now() * 0.01) * 0.25 * (1 + gameState.boost);
+    group.rotation.x = Math.cos(performance.now() * 0.008) * 0.15;
+
+    camera.position.x = p4.x + 2 + Math.sin(performance.now() * 0.005) * 0.45;
+    camera.position.y = p4.y + 1 + gameState.boost * 0.2;
+    camera.position.z = p4.z + 2 + Math.cos(performance.now() * 0.004) * 0.35;
     camera.lookAt(group.position);
 }
 
@@ -417,6 +560,19 @@ function animate() {
     hit();
     var delta = clock.getDelta();
     if (mixer != null) mixer.update(delta);
+
+    if (cubes) {
+        cubes.rotation.x += 0.006;
+        cubes.rotation.y += 0.008;
+    }
+
+    if (meshList.length) {
+        for (var i = 0; i < meshList.length; i++) {
+            meshList[i].rotation.x += 0.12;
+            meshList[i].rotation.y += 0.08;
+            meshList[i].position.y += Math.sin(performance.now() * 0.008 + i) * 0.003;
+        }
+    }
 
     //VR
     if (VR) {
@@ -431,7 +587,10 @@ function animate() {
 }
 animate();
 
+updateHud();
+
 //set camera position
 camera.position.x = 40;
 camera.position.y = 50;
 camera.position.z = 50;
+
